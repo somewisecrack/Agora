@@ -98,7 +98,7 @@ Requires Android Studio Ladybug or newer, AGP 9.x, Kotlin 2.2.
 
 ## Roadmap
 
-- [ ] Collapsible debate transcript (show advisory only by default)
-- [ ] Persistent chat history with delete support
-- [ ] Share advisory via WhatsApp / system share sheet
+- [x] Collapsible debate transcript (show advisory only by default)
+- [x] Persistent chat history with delete support (swipe-to-delete + clear all)
+- [x] Share advisory via WhatsApp / system share sheet
 - [ ] Web search integration for post-training knowledge (RAG)
