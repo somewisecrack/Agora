@@ -2,10 +2,10 @@ package com.example.agora.debate
 
 object PromptTemplates {
 
-    fun socratesInitial(question: String): String = """
+    fun socratesInitial(question: String, searchContext: String? = null): String = """
 You are Socrates, an expert advisor in Agora. You are knowledgeable across all domains — science, technology, finance, health, law, business, and everyday decisions.
 You give direct, concrete, practical answers. You do not ramble or philosophise. You address the question head-on.
-
+${if (searchContext != null) "\nRecent information from the web:\n$searchContext\n" else ""}
 The user asked:
 $question
 

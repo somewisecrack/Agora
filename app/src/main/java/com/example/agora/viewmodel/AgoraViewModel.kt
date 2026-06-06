@@ -3,12 +3,14 @@ package com.example.agora.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.agora.BuildConfig
 import com.example.agora.data.ChatMessage
 import com.example.agora.data.ChatRepository
 import com.example.agora.data.ChatRole
 import com.example.agora.debate.AgoraDebateEngine
 import com.example.agora.debate.TranscriptFormatter
 import com.example.agora.llm.GemmaLocalLlm
+import com.example.agora.web.WebSearchClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,9 @@ data class AgoraUiState(
     val isGenerating: Boolean = false,
     val statusLabel: String = "",
     val errorMessage: String? = null,
-    val modelReady: Boolean = false
+    val modelReady: Boolean = false,
+    val webSearchEnabled: Boolean = false,
+    val webSearchAvailable: Boolean = false
 )
 
 class AgoraViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,6 +36,9 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
     private var gemmaLlm: GemmaLocalLlm? = null
     private var debateEngine: AgoraDebateEngine? = null
     private val repository = ChatRepository(application)
+    private val webSearchClient: WebSearchClient? =
+        BuildConfig.BRAVE_SEARCH_API_KEY.takeIf { it.isNotEmpty() }
+            ?.let { WebSearchClient(it) }
 
     private val _uiState = MutableStateFlow(AgoraUiState())
     val uiState: StateFlow<AgoraUiState> = _uiState.asStateFlow()
@@ -39,7 +46,10 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             val history = withContext(Dispatchers.IO) { repository.load() }
-            _uiState.update { it.copy(messages = history) }
+            _uiState.update { it.copy(
+                messages = history,
+                webSearchAvailable = webSearchClient != null
+            ) }
         }
         loadModel()
     }
@@ -67,6 +77,14 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onInputChanged(text: String) {
         _uiState.update { it.copy(input = text, errorMessage = null) }
+    }
+
+    fun toggleWebSearch() {
+        if (webSearchClient == null) {
+            _uiState.update { it.copy(errorMessage = "Add BRAVE_SEARCH_API_KEY to local.properties and rebuild.") }
+            return
+        }
+        _uiState.update { it.copy(webSearchEnabled = !it.webSearchEnabled) }
     }
 
     fun onSend() {
@@ -102,7 +120,20 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val result = engine.runDebate(question) { status ->
+                val searchContext: String? = if (_uiState.value.webSearchEnabled && webSearchClient != null) {
+                    _uiState.update { it.copy(statusLabel = "Searching the web...") }
+                    try {
+                        val results = webSearchClient.search(question)
+                        if (results.isEmpty()) null
+                        else results.mapIndexed { i, r ->
+                            "[${i + 1}] ${r.title}\n${r.snippet}"
+                        }.joinToString("\n\n")
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else null
+
+                val result = engine.runDebate(question, searchContext) { status ->
                     _uiState.update { it.copy(statusLabel = status) }
                 }
 
