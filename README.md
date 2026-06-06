@@ -84,6 +84,21 @@ If GPU initialisation fails on your device, the fallback is CPU (slower but func
 
 ---
 
+## Web search setup (optional)
+
+Web search uses the [Brave Search API](https://brave.com/search/api/) (free tier: 2,000 queries/month).
+
+1. Sign up at brave.com/search/api and get a free API key
+2. Add it to `local.properties` (this file is gitignored):
+   ```
+   BRAVE_SEARCH_API_KEY=your_key_here
+   ```
+3. Rebuild the app
+
+Once set, a 🔍 icon appears in the input row. Tap it to enable web search for a question — Agora will fetch the top 5 results and feed them as context to Socrates before the debate starts.
+
+---
+
 ## Building
 
 ```bash
@@ -101,4 +116,4 @@ Requires Android Studio Ladybug or newer, AGP 9.x, Kotlin 2.2.
 - [x] Collapsible debate transcript (show advisory only by default)
 - [x] Persistent chat history with delete support (swipe-to-delete + clear all)
 - [x] Share advisory via WhatsApp / system share sheet
-- [ ] Web search integration for post-training knowledge (RAG)
+- [x] Web search integration for post-training knowledge (Brave Search API, RAG)
