@@ -101,4 +101,5 @@ Requires Android Studio Ladybug or newer, AGP 9.x, Kotlin 2.2.
 - [x] Collapsible debate transcript (show advisory only by default)
 - [x] Persistent chat history with delete support (swipe-to-delete + clear all)
 - [x] Share advisory via WhatsApp / system share sheet
+- [x] Multimodal input: camera, gallery, voice recording, file picker
 - [ ] Web search / live data integration (deferred — no suitable free option)
