@@ -15,7 +15,6 @@ class AgoraDebateEngine(
 
     suspend fun runDebate(
         question: String,
-        searchContext: String? = null,
         onStatusUpdate: (String) -> Unit = {}
     ): AgoraDebateResult {
         val turns = mutableListOf<DebateTurn>()
@@ -25,7 +24,7 @@ class AgoraDebateEngine(
             // --- Socrates turn ---
             onStatusUpdate("Socrates is thinking...")
             val socratesResponse = if (round == 1) {
-                llm.generate(PromptTemplates.socratesInitial(question, searchContext))
+                llm.generate(PromptTemplates.socratesInitial(question))
             } else {
                 val transcript = TranscriptFormatter.formatTurns(turns)
                 llm.generate(PromptTemplates.socratesRevision(question, transcript))

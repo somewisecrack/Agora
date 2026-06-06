@@ -3,11 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val localProperties = java.util.Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) load(f.inputStream())
-}
-
 android {
     namespace = "com.example.agora"
     compileSdk {
@@ -24,10 +19,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField(
-            "String", "BRAVE_SEARCH_API_KEY",
-            "\"${localProperties.getProperty("BRAVE_SEARCH_API_KEY", "")}\""
-        )
         ndk {
             abiFilters += setOf("arm64-v8a")
         }
@@ -48,7 +39,6 @@ android {
     }
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 }
 

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -161,10 +160,8 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
             InputRow(
                 input = uiState.input,
                 isGenerating = uiState.isGenerating || !uiState.modelReady,
-                webSearchEnabled = uiState.webSearchEnabled,
                 onInputChanged = viewModel::onInputChanged,
-                onSend = viewModel::onSend,
-                onToggleWebSearch = viewModel::toggleWebSearch
+                onSend = viewModel::onSend
             )
         }
     }
@@ -352,10 +349,8 @@ private fun StatusLabel(status: String) {
 private fun InputRow(
     input: String,
     isGenerating: Boolean,
-    webSearchEnabled: Boolean,
     onInputChanged: (String) -> Unit,
-    onSend: () -> Unit,
-    onToggleWebSearch: () -> Unit
+    onSend: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -363,21 +358,11 @@ private fun InputRow(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onToggleWebSearch) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Toggle web search",
-                tint = if (webSearchEnabled) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.outline
-            )
-        }
         OutlinedTextField(
             value = input,
             onValueChange = onInputChanged,
             modifier = Modifier.weight(1f),
-            placeholder = {
-                Text(if (webSearchEnabled) "Ask with web search..." else "Ask a question...")
-            },
+            placeholder = { Text("Ask a question...") },
             enabled = !isGenerating,
             maxLines = 4,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
