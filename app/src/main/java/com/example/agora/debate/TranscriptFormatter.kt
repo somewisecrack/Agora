@@ -18,15 +18,16 @@ object TranscriptFormatter {
         }
     }
 
-    fun formatFullResult(result: AgoraDebateResult): String {
-        return buildString {
-            append("\uD83C\uDFDB\uFE0F AGORA EXCHANGE\n\n")
-            append(formatTurns(result.turns))
-            append("\n\n\uD83C\uDFDB\uFE0F AGORA ADVISORY\n\n")
-            append(result.advisory)
-            if (!result.consensusReached) {
-                append("\n\nConsensus status: unresolved after max rounds.")
-            }
+    fun formatAdvisory(result: AgoraDebateResult): String = buildString {
+        append("\uD83C\uDFDB\uFE0F AGORA ADVISORY\n\n")
+        append(result.advisory)
+        if (!result.consensusReached) {
+            append("\n\nConsensus: unresolved after max rounds.")
         }
+    }
+
+    fun formatTranscript(result: AgoraDebateResult): String = buildString {
+        append("\uD83C\uDFDB\uFE0F AGORA EXCHANGE\n\n")
+        append(formatTurns(result.turns))
     }
 }

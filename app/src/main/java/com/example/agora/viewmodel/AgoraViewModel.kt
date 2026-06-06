@@ -4,15 +4,18 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.agora.data.ChatMessage
+import com.example.agora.data.ChatRepository
 import com.example.agora.data.ChatRole
 import com.example.agora.debate.AgoraDebateEngine
 import com.example.agora.debate.TranscriptFormatter
 import com.example.agora.llm.GemmaLocalLlm
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class AgoraUiState(
@@ -28,11 +31,16 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
 
     private var gemmaLlm: GemmaLocalLlm? = null
     private var debateEngine: AgoraDebateEngine? = null
+    private val repository = ChatRepository(application)
 
     private val _uiState = MutableStateFlow(AgoraUiState())
     val uiState: StateFlow<AgoraUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val history = withContext(Dispatchers.IO) { repository.load() }
+            _uiState.update { it.copy(messages = history) }
+        }
         loadModel()
     }
 
@@ -80,15 +88,17 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
             timestampMillis = System.currentTimeMillis()
         )
 
+        val messagesWithUser = _uiState.value.messages + userMessage
         _uiState.update {
             it.copy(
-                messages = it.messages + userMessage,
+                messages = messagesWithUser,
                 input = "",
                 isGenerating = true,
                 statusLabel = "Starting debate...",
                 errorMessage = null
             )
         }
+        viewModelScope.launch(Dispatchers.IO) { repository.save(messagesWithUser) }
 
         viewModelScope.launch {
             try {
@@ -99,17 +109,16 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
                 val agoraMessage = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     role = ChatRole.Agora,
-                    text = TranscriptFormatter.formatFullResult(result),
+                    text = TranscriptFormatter.formatAdvisory(result),
+                    transcript = TranscriptFormatter.formatTranscript(result),
                     timestampMillis = System.currentTimeMillis()
                 )
 
+                val updatedMessages = _uiState.value.messages + agoraMessage
                 _uiState.update {
-                    it.copy(
-                        messages = it.messages + agoraMessage,
-                        isGenerating = false,
-                        statusLabel = ""
-                    )
+                    it.copy(messages = updatedMessages, isGenerating = false, statusLabel = "")
                 }
+                withContext(Dispatchers.IO) { repository.save(updatedMessages) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -120,6 +129,17 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    fun deleteMessage(id: String) {
+        val updated = _uiState.value.messages.filter { it.id != id }
+        _uiState.update { it.copy(messages = updated) }
+        viewModelScope.launch(Dispatchers.IO) { repository.save(updated) }
+    }
+
+    fun deleteAllMessages() {
+        _uiState.update { it.copy(messages = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) { repository.clear() }
     }
 
     override fun onCleared() {

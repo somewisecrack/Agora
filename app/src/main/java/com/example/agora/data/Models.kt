@@ -16,7 +16,8 @@ data class AgoraDebateResult(
 data class ChatMessage(
     val id: String,
     val role: ChatRole,
-    val text: String,
+    val text: String,           // advisory for Agora messages, question text for User
+    val transcript: String? = null,  // full debate exchange, Agora messages only
     val timestampMillis: Long
 )
 

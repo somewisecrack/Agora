@@ -1,5 +1,7 @@
 package com.example.agora.ui
 
+import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,23 +22,37 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -51,6 +67,7 @@ import com.example.agora.viewmodel.AgoraViewModel
 fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    var showClearDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -58,9 +75,35 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
         }
     }
 
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Clear history") },
+            text = { Text("Delete all conversations? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteAllMessages()
+                    showClearDialog = false
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Agora") })
+            TopAppBar(
+                title = { Text("Agora") },
+                actions = {
+                    if (uiState.messages.isNotEmpty()) {
+                        IconButton(onClick = { showClearDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                        }
+                    }
+                }
+            )
         }
     ) { innerPadding ->
         Column(
@@ -75,8 +118,11 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(uiState.messages) { message ->
-                    MessageBubble(message)
+                items(uiState.messages, key = { it.id }) { message ->
+                    SwipeToDeleteMessage(
+                        message = message,
+                        onDelete = { viewModel.deleteMessage(message.id) }
+                    )
                 }
                 if (uiState.isGenerating) {
                     item {
@@ -121,43 +167,167 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToDeleteMessage(message: ChatMessage, onDelete: () -> Unit) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else false
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(end = 16.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    ) {
+        MessageBubble(message)
+    }
+}
+
 @Composable
 private fun MessageBubble(message: ChatMessage) {
     val isUser = message.role == ChatRole.User
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 320.dp)
-                .background(
-                    color = if (isUser)
-                        MaterialTheme.colorScheme.primaryContainer
-                    else
-                        MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (isUser) 16.dp else 4.dp,
-                        bottomEnd = if (isUser) 4.dp else 16.dp
+        if (isUser) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(
+                            topStart = 16.dp, topEnd = 16.dp,
+                            bottomStart = 16.dp, bottomEnd = 4.dp
+                        )
                     )
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
+            }
+        } else {
+            AgoraBubble(
+                advisory = message.text,
+                transcript = message.transcript,
+                onShare = {
+                    val shareText = message.transcript
+                        ?.let { "${message.text}\n\n$it" }
+                        ?: message.text
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share via"))
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgoraBubble(advisory: String, transcript: String?, onShare: () -> Unit) {
+    var transcriptExpanded by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .widthIn(max = 360.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(
+                    topStart = 4.dp, topEnd = 16.dp,
+                    bottomStart = 16.dp, bottomEnd = 16.dp
+                )
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Column {
             Text(
-                text = message.text,
+                text = advisory,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = if (message.role == ChatRole.Agora) FontFamily.Monospace
-                    else FontFamily.Default,
-                    fontSize = if (message.role == ChatRole.Agora) 13.sp else 15.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
                     lineHeight = 20.sp
                 ),
-                color = if (isUser)
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            if (transcript != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = { transcriptExpanded = !transcriptExpanded },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (transcriptExpanded) Icons.Default.KeyboardArrowUp
+                                          else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (transcriptExpanded) "Hide debate" else "View debate",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+
+                    IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = "Share",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = transcriptExpanded) {
+                    Column {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = transcript,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 17.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -165,10 +335,7 @@ private fun MessageBubble(message: ChatMessage) {
 @Composable
 private fun StatusLabel(status: String) {
     if (status.isEmpty()) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
         Text(
             text = status,
             style = MaterialTheme.typography.bodySmall,
@@ -203,10 +370,7 @@ private fun InputRow(
             shape = RoundedCornerShape(24.dp)
         )
         Spacer(modifier = Modifier.padding(4.dp))
-        IconButton(
-            onClick = onSend,
-            enabled = !isGenerating && input.isNotBlank()
-        ) {
+        IconButton(onClick = onSend, enabled = !isGenerating && input.isNotBlank()) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Send,
                 contentDescription = "Send",
