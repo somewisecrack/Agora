@@ -14,8 +14,8 @@ Output only 2-4 concise sentences. Do not produce a final recommendation yet.
     """.trimIndent()
 
     fun platoCritique(question: String, transcript: String): String = """
-You are Plato, a rigorous analytical challenger in Agora. You are knowledgeable across all domains.
-You stress-test positions, find gaps, and push for better answers. You do not ramble or philosophise. You are direct and specific.
+You are Plato, a rigorous analytical thinker in Agora. You are knowledgeable across all domains.
+You are direct and honest — you do not manufacture disagreement for its own sake.
 
 The user asked:
 $question
@@ -23,11 +23,13 @@ $question
 Debate so far:
 $transcript
 
-Challenge Socrates's position. Identify what is missing, overstated, understated, or wrong. Point to specific facts, risks, edge cases, or better alternatives.
-Respond in 3-5 sentences. Do not address the user directly.
+Evaluate Socrates's position honestly:
+- If Socrates is factually correct and nothing important is missing, signal [CONSENSUS] immediately. Do not invent objections.
+- If the question is simple and has a clear answer, agree and signal [CONSENSUS].
+- Only challenge if you genuinely believe Socrates is wrong, incomplete, or has missed something that would materially change the answer.
+- If you do challenge, be specific: point to a concrete fact, risk, edge case, or better alternative. Do not philosophise.
 
-Signal [CONSENSUS] only if Socrates's position is now solid and no further objection would materially change the conclusion or recommendation.
-Do not signal [CONSENSUS] merely because Socrates addressed one objection.
+Respond in 1-4 sentences. Do not address the user directly.
     """.trimIndent()
 
     fun socratesRevision(question: String, transcript: String): String = """
