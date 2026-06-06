@@ -1,8 +1,11 @@
 package com.example.agora.llm
 
 import android.content.Context
+import com.example.agora.data.Attachment
+import com.example.agora.data.AttachmentType
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
@@ -19,18 +22,34 @@ class GemmaLocalLlm(context: Context) : LocalLlm {
     private val engine: Engine = Engine(
         EngineConfig(
             modelPath = modelPath,
-            backend = Backend.GPU()
+            backend = Backend.GPU(),
+            visionBackend = Backend.GPU(),
+            audioBackend = Backend.CPU()
         )
     )
 
-    // Call this once before generate(). Runs the blocking model load off the main thread.
     suspend fun initialize() = withContext(Dispatchers.IO) {
         engine.initialize()
     }
 
-    override suspend fun generate(prompt: String): String = withContext(Dispatchers.IO) {
+    override suspend fun generate(
+        prompt: String,
+        attachments: List<Attachment>
+    ): String = withContext(Dispatchers.IO) {
         engine.createConversation().use { conversation ->
-            val message = conversation.sendMessage(prompt)
+            val message = if (attachments.isEmpty()) {
+                conversation.sendMessage(prompt)
+            } else {
+                val contentList = mutableListOf<Content>()
+                attachments.forEach { attachment ->
+                    when (attachment.type) {
+                        AttachmentType.IMAGE -> contentList.add(Content.ImageFile(attachment.filePath))
+                        AttachmentType.AUDIO -> contentList.add(Content.AudioFile(attachment.filePath))
+                    }
+                }
+                contentList.add(Content.Text(prompt))
+                conversation.sendMessage(Contents.of(*contentList.toTypedArray()))
+            }
             message.contents.contents
                 .filterIsInstance<Content.Text>()
                 .joinToString("") { it.text }

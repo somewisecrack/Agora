@@ -1,6 +1,7 @@
 package com.example.agora.debate
 
 import com.example.agora.data.AgoraDebateResult
+import com.example.agora.data.Attachment
 import com.example.agora.data.DebateTurn
 import com.example.agora.llm.LocalLlm
 
@@ -15,6 +16,7 @@ class AgoraDebateEngine(
 
     suspend fun runDebate(
         question: String,
+        attachments: List<Attachment> = emptyList(),
         onStatusUpdate: (String) -> Unit = {}
     ): AgoraDebateResult {
         val turns = mutableListOf<DebateTurn>()
@@ -24,7 +26,8 @@ class AgoraDebateEngine(
             // --- Socrates turn ---
             onStatusUpdate("Socrates is thinking...")
             val socratesResponse = if (round == 1) {
-                llm.generate(PromptTemplates.socratesInitial(question))
+                // Attachments only passed on the first turn — they ground the initial position
+                llm.generate(PromptTemplates.socratesInitial(question), attachments)
             } else {
                 val transcript = TranscriptFormatter.formatTurns(turns)
                 llm.generate(PromptTemplates.socratesRevision(question, transcript))

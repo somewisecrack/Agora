@@ -1,8 +1,11 @@
 package com.example.agora.viewmodel
 
 import android.app.Application
+import android.media.MediaRecorder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.agora.data.Attachment
+import com.example.agora.data.AttachmentType
 import com.example.agora.data.ChatMessage
 import com.example.agora.data.ChatRepository
 import com.example.agora.data.ChatRole
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.UUID
 
 data class AgoraUiState(
@@ -24,7 +28,9 @@ data class AgoraUiState(
     val isGenerating: Boolean = false,
     val statusLabel: String = "",
     val errorMessage: String? = null,
-    val modelReady: Boolean = false
+    val modelReady: Boolean = false,
+    val pendingAttachments: List<Attachment> = emptyList(),
+    val isRecording: Boolean = false
 )
 
 class AgoraViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,6 +38,14 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
     private var gemmaLlm: GemmaLocalLlm? = null
     private var debateEngine: AgoraDebateEngine? = null
     private val repository = ChatRepository(application)
+    private var mediaRecorder: MediaRecorder? = null
+    private var currentRecordingFile: File? = null
+
+    private val attachmentsDir: File
+        get() = File(getApplication<Application>().filesDir, "attachments").also { it.mkdirs() }
+
+    private val capturesDir: File
+        get() = File(getApplication<Application>().cacheDir, "captures").also { it.mkdirs() }
 
     private val _uiState = MutableStateFlow(AgoraUiState())
     val uiState: StateFlow<AgoraUiState> = _uiState.asStateFlow()
@@ -69,10 +83,85 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(input = text, errorMessage = null) }
     }
 
+    // Called from UI with a content URI path — copies file to persistent attachments dir
+    fun addImageAttachment(sourcePath: String) {
+        val dest = File(attachmentsDir, "img_${System.currentTimeMillis()}.jpg")
+        try {
+            File(sourcePath).copyTo(dest, overwrite = true)
+            val attachment = Attachment(AttachmentType.IMAGE, dest.absolutePath)
+            _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + attachment) }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(errorMessage = "Failed to attach image: ${e.message}") }
+        }
+    }
+
+    fun removeAttachment(index: Int) {
+        _uiState.update {
+            it.copy(pendingAttachments = it.pendingAttachments.toMutableList().also { list -> list.removeAt(index) })
+        }
+    }
+
+    fun newCameraFile(): File = File(capturesDir, "photo_${System.currentTimeMillis()}.jpg")
+
+    fun onCameraCaptured(file: File) {
+        val dest = File(attachmentsDir, file.name)
+        file.copyTo(dest, overwrite = true)
+        val attachment = Attachment(AttachmentType.IMAGE, dest.absolutePath)
+        _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + attachment) }
+    }
+
+    fun startRecording() {
+        val file = File(capturesDir, "voice_${System.currentTimeMillis()}.m4a")
+        currentRecordingFile = file
+        try {
+            mediaRecorder = MediaRecorder(getApplication()).apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+            _uiState.update { it.copy(isRecording = true, errorMessage = null) }
+        } catch (e: Exception) {
+            mediaRecorder?.release()
+            mediaRecorder = null
+            _uiState.update { it.copy(errorMessage = "Could not start recording: ${e.message}") }
+        }
+    }
+
+    fun stopRecording() {
+        try {
+            mediaRecorder?.stop()
+        } catch (_: Exception) { }
+        mediaRecorder?.release()
+        mediaRecorder = null
+        _uiState.update { it.copy(isRecording = false) }
+
+        val file = currentRecordingFile ?: return
+        currentRecordingFile = null
+        if (file.exists() && file.length() > 0) {
+            val dest = File(attachmentsDir, file.name)
+            file.copyTo(dest, overwrite = true)
+            val attachment = Attachment(AttachmentType.AUDIO, dest.absolutePath)
+            _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + attachment) }
+        }
+    }
+
+    fun cancelRecording() {
+        try { mediaRecorder?.stop() } catch (_: Exception) { }
+        mediaRecorder?.release()
+        mediaRecorder = null
+        currentRecordingFile?.delete()
+        currentRecordingFile = null
+        _uiState.update { it.copy(isRecording = false) }
+    }
+
     fun onSend() {
         val question = _uiState.value.input.trim()
-        if (question.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "Please enter a question.") }
+        val attachments = _uiState.value.pendingAttachments
+        if (question.isEmpty() && attachments.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Please enter a question or attach a file.") }
             return
         }
         if (_uiState.value.isGenerating) return
@@ -81,10 +170,13 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        val effectiveQuestion = question.ifEmpty { "Please analyze the attached content." }
+
         val userMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
             role = ChatRole.User,
-            text = question,
+            text = effectiveQuestion,
+            attachments = attachments,
             timestampMillis = System.currentTimeMillis()
         )
 
@@ -93,6 +185,7 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 messages = messagesWithUser,
                 input = "",
+                pendingAttachments = emptyList(),
                 isGenerating = true,
                 statusLabel = "Starting debate...",
                 errorMessage = null
@@ -102,7 +195,7 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val result = engine.runDebate(question) { status ->
+                val result = engine.runDebate(effectiveQuestion, attachments) { status ->
                     _uiState.update { it.copy(statusLabel = status) }
                 }
 
@@ -144,6 +237,7 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        cancelRecording()
         gemmaLlm?.close()
     }
 }

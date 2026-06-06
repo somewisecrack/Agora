@@ -20,6 +20,13 @@ class ChatRepository(context: Context) {
                     role = ChatRole.valueOf(obj.getString("role")),
                     text = obj.getString("text"),
                     transcript = if (obj.has("transcript")) obj.getString("transcript") else null,
+                    attachments = if (obj.has("attachments")) {
+                        val arr = obj.getJSONArray("attachments")
+                        (0 until arr.length()).map { j ->
+                            val a = arr.getJSONObject(j)
+                            Attachment(AttachmentType.valueOf(a.getString("type")), a.getString("filePath"))
+                        }
+                    } else emptyList(),
                     timestampMillis = obj.getLong("timestampMillis")
                 )
             }
@@ -36,6 +43,16 @@ class ChatRepository(context: Context) {
                 put("role", msg.role.name)
                 put("text", msg.text)
                 msg.transcript?.let { put("transcript", it) }
+                if (msg.attachments.isNotEmpty()) {
+                    val arr = JSONArray()
+                    msg.attachments.forEach { a ->
+                        arr.put(JSONObject().apply {
+                            put("type", a.type.name)
+                            put("filePath", a.filePath)
+                        })
+                    }
+                    put("attachments", arr)
+                }
                 put("timestampMillis", msg.timestampMillis)
             }
             array.put(obj)

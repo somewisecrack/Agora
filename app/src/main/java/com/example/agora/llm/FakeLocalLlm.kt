@@ -1,5 +1,7 @@
 package com.example.agora.llm
 
+import com.example.agora.data.Attachment
+
 /**
  * Fake LLM for UI and debate loop development/testing.
  * Replace with GemmaLocalLlm for real on-device inference.
@@ -11,10 +13,10 @@ class FakeLocalLlm(private val consensusOnRound: Int = 2) : LocalLlm {
 
     private var platoCallCount = 0
 
-    override suspend fun generate(prompt: String): String {
+    override suspend fun generate(prompt: String, attachments: List<Attachment>): String {
         return when {
             prompt.contains("You are Plato") -> generatePlatoResponse()
-            prompt.contains("Form the initial position") -> generateSocratesInitial()
+            prompt.contains("State your initial position") -> generateSocratesInitial()
             prompt.contains("Revise, defend") -> generateSocratesRevision()
             prompt.contains("Write the final Agora advisory") -> generateAdvisory()
             else -> "I have considered the matter carefully and offer this perspective."
