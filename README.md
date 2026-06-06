@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/agora.png" alt="Agora" width="720"/>
+</p>
+
 # Agora
 
 An on-device AI debate app for Android. Ask any question and watch two AI personas — **Socrates** and **Plato** — debate it from opposing angles before delivering a final synthesised advisory. All inference runs locally on-device using Gemma via LiteRT-LM. No internet required. No data leaves your phone.
