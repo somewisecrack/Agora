@@ -4,63 +4,105 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 class ChatRepository(context: Context) {
 
     private val file = File(context.filesDir, "chat_history.json")
 
-    fun load(): List<ChatMessage> {
+    fun load(): List<Conversation> {
         if (!file.exists()) return emptyList()
+        val text = file.readText()
         return try {
-            val array = JSONArray(file.readText())
-            (0 until array.length()).map { i ->
-                val obj = array.getJSONObject(i)
-                ChatMessage(
+            // New format: {"conversations": [...]}
+            val root = JSONObject(text)
+            val arr = root.getJSONArray("conversations")
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                Conversation(
                     id = obj.getString("id"),
-                    role = ChatRole.valueOf(obj.getString("role")),
-                    text = obj.getString("text"),
-                    transcript = if (obj.has("transcript")) obj.getString("transcript") else null,
-                    attachments = if (obj.has("attachments")) {
-                        val arr = obj.getJSONArray("attachments")
-                        (0 until arr.length()).map { j ->
-                            val a = arr.getJSONObject(j)
-                            Attachment(AttachmentType.valueOf(a.getString("type")), a.getString("filePath"))
-                        }
-                    } else emptyList(),
-                    timestampMillis = obj.getLong("timestampMillis")
+                    title = obj.getString("title"),
+                    messages = parseMessages(obj.getJSONArray("messages")),
+                    createdAt = obj.getLong("createdAt")
                 )
             }
-        } catch (e: Exception) {
-            emptyList()
+        } catch (_: Exception) {
+            // Migrate old flat format: JSON array of messages → single conversation
+            try {
+                val messages = parseMessages(JSONArray(text))
+                if (messages.isEmpty()) return emptyList()
+                val title = messages.firstOrNull { it.role == ChatRole.User }?.text?.take(50) ?: "Chat"
+                listOf(
+                    Conversation(
+                        id = UUID.randomUUID().toString(),
+                        title = title,
+                        messages = messages,
+                        createdAt = messages.first().timestampMillis
+                    )
+                )
+            } catch (_: Exception) {
+                emptyList()
+            }
         }
     }
 
-    fun save(messages: List<ChatMessage>) {
-        val array = JSONArray()
+    fun save(conversations: List<Conversation>) {
+        val root = JSONObject()
+        val arr = JSONArray()
+        conversations.forEach { conv ->
+            arr.put(JSONObject().apply {
+                put("id", conv.id)
+                put("title", conv.title)
+                put("createdAt", conv.createdAt)
+                put("messages", serializeMessages(conv.messages))
+            })
+        }
+        root.put("conversations", arr)
+        file.writeText(root.toString())
+    }
+
+    fun clear() { file.delete() }
+
+    private fun parseMessages(arr: JSONArray): List<ChatMessage> =
+        (0 until arr.length()).map { i ->
+            val obj = arr.getJSONObject(i)
+            ChatMessage(
+                id = obj.getString("id"),
+                role = ChatRole.valueOf(obj.getString("role")),
+                text = obj.getString("text"),
+                transcript = if (obj.has("transcript")) obj.getString("transcript") else null,
+                attachments = if (obj.has("attachments")) {
+                    val a = obj.getJSONArray("attachments")
+                    (0 until a.length()).map { j ->
+                        val at = a.getJSONObject(j)
+                        Attachment(AttachmentType.valueOf(at.getString("type")), at.getString("filePath"))
+                    }
+                } else emptyList(),
+                timestampMillis = obj.getLong("timestampMillis")
+            )
+        }
+
+    private fun serializeMessages(messages: List<ChatMessage>): JSONArray {
+        val arr = JSONArray()
         messages.forEach { msg ->
-            val obj = JSONObject().apply {
+            arr.put(JSONObject().apply {
                 put("id", msg.id)
                 put("role", msg.role.name)
                 put("text", msg.text)
                 msg.transcript?.let { put("transcript", it) }
                 if (msg.attachments.isNotEmpty()) {
-                    val arr = JSONArray()
-                    msg.attachments.forEach { a ->
-                        arr.put(JSONObject().apply {
-                            put("type", a.type.name)
-                            put("filePath", a.filePath)
+                    val a = JSONArray()
+                    msg.attachments.forEach { at ->
+                        a.put(JSONObject().apply {
+                            put("type", at.type.name)
+                            put("filePath", at.filePath)
                         })
                     }
-                    put("attachments", arr)
+                    put("attachments", a)
                 }
                 put("timestampMillis", msg.timestampMillis)
-            }
-            array.put(obj)
+            })
         }
-        file.writeText(array.toString())
-    }
-
-    fun clear() {
-        file.delete()
+        return arr
     }
 }

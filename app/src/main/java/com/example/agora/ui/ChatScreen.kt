@@ -36,20 +36,24 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
@@ -57,6 +61,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +69,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +82,7 @@ import com.example.agora.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -84,7 +91,12 @@ import com.example.agora.data.Attachment
 import com.example.agora.data.AttachmentType
 import com.example.agora.data.ChatMessage
 import com.example.agora.data.ChatRole
+import com.example.agora.data.Conversation
 import com.example.agora.viewmodel.AgoraViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 private fun SplashOverlay(visible: Boolean) {
@@ -97,7 +109,6 @@ private fun SplashOverlay(visible: Boolean) {
                 .fillMaxSize()
                 .background(Color(0xFF1A1208))
         ) {
-            // Image anchored to bottom — FillWidth ensures full width is visible (both philosophers)
             Image(
                 painter = painterResource(id = R.drawable.agora_bg),
                 contentDescription = null,
@@ -106,7 +117,6 @@ private fun SplashOverlay(visible: Boolean) {
                     .align(Alignment.BottomCenter),
                 contentScale = ContentScale.FillWidth
             )
-            // Gradient from top so text is readable and blends into background
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -151,7 +161,8 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
-    var showClearDialog by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     var showAttachOptions by remember { mutableStateOf(false) }
 
     // Camera
@@ -164,25 +175,12 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
 
     // Gallery
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let {
-            val path = it.toString()
-            viewModel.addImageAttachment(path)
-        }
-        showAttachOptions = false
-    }
-
-    // File picker (images + audio)
-    val fileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
         uri?.let { viewModel.addImageAttachment(it.toString()) }
         showAttachOptions = false
     }
 
     // Camera permission
-    val cameraPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             val file = viewModel.newCameraFile()
             pendingCameraFile = file
@@ -192,165 +190,271 @@ fun ChatScreen(viewModel: AgoraViewModel = viewModel()) {
     }
 
     // Mic permission
-    val micPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             viewModel.startRecording()
             showAttachOptions = false
         }
     }
 
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    LaunchedEffect(uiState.activeMessages.size) {
+        if (uiState.activeMessages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.activeMessages.size - 1)
         }
     }
 
-    if (showClearDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear history") },
-            text = { Text("Delete all conversations? This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.deleteAllMessages(); showClearDialog = false }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ConversationDrawer(
+                conversations = uiState.conversations,
+                activeId = uiState.activeConversationId,
+                onNewChat = {
+                    viewModel.newChat()
+                    scope.launch { drawerState.close() }
+                },
+                onSelectConversation = { id ->
+                    viewModel.loadConversation(id)
+                    scope.launch { drawerState.close() }
+                },
+                onDeleteConversation = viewModel::deleteConversation
+            )
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Open menu")
+                            }
+                        },
+                        title = { Text("Agora") }
+                    )
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Agora") },
-                actions = {
-                    if (uiState.messages.isNotEmpty()) {
-                        IconButton(onClick = { showClearDialog = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear history")
+            ) { innerPadding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .imePadding()
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(uiState.activeMessages, key = { it.id }) { message ->
+                            SwipeToDeleteMessage(message = message, onDelete = { viewModel.deleteMessage(message.id) })
+                        }
+                        if (uiState.isGenerating) {
+                            item { StatusLabel(uiState.statusLabel) }
                         }
                     }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .imePadding()
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.messages, key = { it.id }) { message ->
-                    SwipeToDeleteMessage(message = message, onDelete = { viewModel.deleteMessage(message.id) })
-                }
-                if (uiState.isGenerating) {
-                    item { StatusLabel(uiState.statusLabel) }
-                }
-            }
 
-            if (!uiState.modelReady && uiState.errorMessage == null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(
-                        text = uiState.statusLabel.ifEmpty { "Loading model..." },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-            }
-
-            uiState.errorMessage?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
-
-            // Attachment previews
-            if (uiState.pendingAttachments.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    itemsIndexed(uiState.pendingAttachments) { index, attachment ->
-                        AttachmentChip(attachment = attachment, onRemove = { viewModel.removeAttachment(index) })
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            // Attach options row
-            AnimatedVisibility(visible = showAttachOptions && !uiState.isRecording) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AttachOptionButton(icon = Icons.Default.PhotoCamera, label = "Camera") {
-                        cameraPermission.launch(android.Manifest.permission.CAMERA)
-                    }
-                    AttachOptionButton(icon = Icons.Default.PhotoLibrary, label = "Gallery") {
-                        galleryLauncher.launch(
-                            androidx.activity.result.PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                    if (!uiState.modelReady && uiState.errorMessage == null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = uiState.statusLabel.ifEmpty { "Loading model..." },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
                             )
+                        }
+                    }
+
+                    uiState.errorMessage?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
                     }
-                    AttachOptionButton(icon = Icons.Default.Mic, label = "Voice") {
-                        micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
-                    }
-                }
-            }
 
-            // Recording indicator
-            AnimatedVisibility(visible = uiState.isRecording) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier.size(10.dp).background(MaterialTheme.colorScheme.error, CircleShape)
+                    // Attachment previews
+                    if (uiState.pendingAttachments.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            itemsIndexed(uiState.pendingAttachments) { index, attachment ->
+                                AttachmentChip(attachment = attachment, onRemove = { viewModel.removeAttachment(index) })
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
+                    // Attach options row
+                    AnimatedVisibility(visible = showAttachOptions && !uiState.isRecording) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AttachOptionButton(icon = Icons.Default.PhotoCamera, label = "Camera") {
+                                cameraPermission.launch(android.Manifest.permission.CAMERA)
+                            }
+                            AttachOptionButton(icon = Icons.Default.PhotoLibrary, label = "Gallery") {
+                                galleryLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            }
+                            AttachOptionButton(icon = Icons.Default.Mic, label = "Voice") {
+                                micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    }
+
+                    // Recording indicator
+                    AnimatedVisibility(visible = uiState.isRecording) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.size(10.dp).background(MaterialTheme.colorScheme.error, CircleShape))
+                            Text("Recording...", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.cancelRecording() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.outline)
+                            }
+                            IconButton(onClick = { viewModel.stopRecording() }) {
+                                Icon(Icons.Default.Stop, contentDescription = "Stop", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+
+                    InputRow(
+                        input = uiState.input,
+                        isGenerating = uiState.isGenerating || !uiState.modelReady || uiState.isRecording,
+                        showAttachOptions = showAttachOptions,
+                        onInputChanged = viewModel::onInputChanged,
+                        onSend = viewModel::onSend,
+                        onToggleAttach = { showAttachOptions = !showAttachOptions }
                     )
-                    Text("Recording...", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { viewModel.cancelRecording() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.outline)
-                    }
-                    IconButton(onClick = { viewModel.stopRecording() }) {
-                        Icon(Icons.Default.Stop, contentDescription = "Stop", tint = MaterialTheme.colorScheme.error)
-                    }
                 }
             }
 
-            InputRow(
-                input = uiState.input,
-                isGenerating = uiState.isGenerating || !uiState.modelReady || uiState.isRecording,
-                showAttachOptions = showAttachOptions,
-                onInputChanged = viewModel::onInputChanged,
-                onSend = viewModel::onSend,
-                onToggleAttach = { showAttachOptions = !showAttachOptions }
+            SplashOverlay(visible = !uiState.modelReady && uiState.errorMessage == null)
+        }
+    }
+}
+
+@Composable
+private fun ConversationDrawer(
+    conversations: List<Conversation>,
+    activeId: String?,
+    onNewChat: () -> Unit,
+    onSelectConversation: (String) -> Unit,
+    onDeleteConversation: (String) -> Unit
+) {
+    ModalDrawerSheet(modifier = Modifier.widthIn(max = 300.dp)) {
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Agora",
+                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onNewChat) {
+                Icon(Icons.Default.Edit, contentDescription = "New chat")
+            }
+        }
+        HorizontalDivider()
+
+        if (conversations.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "No previous chats",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        } else {
+            LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+                items(conversations.sortedByDescending { it.createdAt }, key = { it.id }) { conv ->
+                    ConversationItem(
+                        conversation = conv,
+                        isActive = conv.id == activeId,
+                        onClick = { onSelectConversation(conv.id) },
+                        onDelete = { onDeleteConversation(conv.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationItem(
+    conversation: Conversation,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val bg = if (isActive) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg)
+            .then(
+                Modifier.padding(0.dp) // clickable handled below
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(0.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = conversation.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isActive) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = formatConversationDate(conversation.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.outline
             )
         }
     }
+}
 
-    // Splash overlay — fades out once model is ready
-    SplashOverlay(visible = !uiState.modelReady && uiState.errorMessage == null)
-    } // end outer Box
+private fun formatConversationDate(timestampMillis: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestampMillis
+    return when {
+        diff < 24 * 60 * 60 * 1000L -> SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestampMillis))
+        diff < 7 * 24 * 60 * 60 * 1000L -> SimpleDateFormat("EEE", Locale.getDefault()).format(Date(timestampMillis))
+        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestampMillis))
+    }
 }
 
 @Composable
@@ -362,9 +466,7 @@ private fun AttachOptionButton(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(
             onClick = onClick,
-            modifier = Modifier
-                .size(48.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+            modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
         ) {
             Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -636,7 +738,7 @@ private fun InputRow(
             shape = RoundedCornerShape(24.dp)
         )
         Spacer(modifier = Modifier.padding(4.dp))
-        IconButton(onClick = onSend, enabled = !isGenerating && (input.isNotBlank())) {
+        IconButton(onClick = onSend, enabled = !isGenerating && input.isNotBlank()) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Send,
                 contentDescription = "Send",

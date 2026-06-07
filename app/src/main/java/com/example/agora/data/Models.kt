@@ -22,6 +22,13 @@ data class ChatMessage(
     val timestampMillis: Long
 )
 
+data class Conversation(
+    val id: String,
+    val title: String,       // first user message, truncated
+    val messages: List<ChatMessage>,
+    val createdAt: Long
+)
+
 enum class ChatRole {
     User,
     Agora,
