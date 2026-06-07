@@ -112,10 +112,8 @@ private fun SplashOverlay(visible: Boolean) {
             Image(
                 painter = painterResource(id = R.drawable.agora_bg),
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter),
-                contentScale = ContentScale.FillWidth
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
             Box(
                 modifier = Modifier
