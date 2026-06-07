@@ -124,10 +124,17 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(input = text, errorMessage = null) }
     }
 
-    fun addImageAttachment(sourcePath: String) {
+    fun addImageAttachment(uriString: String) {
         val dest = File(attachmentsDir, "img_${System.currentTimeMillis()}.jpg")
         try {
-            File(sourcePath).copyTo(dest, overwrite = true)
+            val uri = android.net.Uri.parse(uriString)
+            if (uri.scheme == "content") {
+                getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw Exception("Could not open URI")
+            } else {
+                File(uriString).copyTo(dest, overwrite = true)
+            }
             _uiState.update { it.copy(pendingAttachments = it.pendingAttachments + Attachment(AttachmentType.IMAGE, dest.absolutePath)) }
         } catch (e: Exception) {
             _uiState.update { it.copy(errorMessage = "Failed to attach image: ${e.message}") }
