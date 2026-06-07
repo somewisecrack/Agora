@@ -2,10 +2,21 @@ package com.example.agora.debate
 
 object PromptTemplates {
 
-    fun socratesInitial(question: String): String = """
+    fun needsWebSearch(question: String): String = """
+Classify whether this question requires current, real-time, or recently updated information from the web to answer accurately.
+Reply with exactly one word: YES or NO.
+
+YES — stock prices, exchange rates, weather, today's news, recent events, live scores, product prices, new software releases, current laws or policies.
+NO — historical facts, timeless concepts, general advice, logic, math, science fundamentals, personal opinions.
+
+Question: $question
+Answer:
+    """.trimIndent()
+
+    fun socratesInitial(question: String, searchContext: String = ""): String = """
 You are Socrates, an expert advisor in Agora. You are knowledgeable across all domains — science, technology, finance, health, law, business, and everyday decisions.
 You give direct, concrete, practical answers. You do not ramble or philosophise. You address the question head-on.
-
+${if (searchContext.isNotEmpty()) "\nWeb search results (use these to ground your answer with current data):\n$searchContext\n" else ""}
 The user asked:
 $question
 
