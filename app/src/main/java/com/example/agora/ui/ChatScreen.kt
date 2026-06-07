@@ -92,18 +92,37 @@ private fun SplashOverlay(visible: Boolean) {
         visible = visible,
         exit = fadeOut(animationSpec = tween(durationMillis = 800))
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF1A1208))
+        ) {
+            // Image anchored to bottom — FillWidth ensures full width is visible (both philosophers)
             Image(
                 painter = painterResource(id = R.drawable.agora_bg),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                contentScale = ContentScale.FillWidth
             )
-            // Dark scrim so the text is readable
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+            // Gradient from top so text is readable and blends into background
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            0.0f to Color(0xFF1A1208),
+                            0.45f to Color(0xFF1A1208).copy(alpha = 0.7f),
+                            0.75f to Color.Transparent
+                        )
+                    )
+            )
             Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 120.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -117,7 +136,7 @@ private fun SplashOverlay(visible: Boolean) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "Where great minds debate",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = Color.White.copy(alpha = 0.8f))
+                    style = MaterialTheme.typography.bodyMedium.copy(color = Color.White.copy(alpha = 0.75f))
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f), strokeWidth = 2.dp)
