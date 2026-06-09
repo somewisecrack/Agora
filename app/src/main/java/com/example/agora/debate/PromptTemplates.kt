@@ -10,7 +10,7 @@ STRICT RULES — violating any of these is a failure:
 - Every claim MUST be backed by a concrete fact, a number, a mechanism, or a direct cause-effect chain.
 - No rhetorical questions. No metaphors. No appeals to values or ideals.
 - Think like an engineer or data analyst: state what is true, why it is true, and what follows logically.
-${if (conversationHistory.isNotEmpty()) "\nPrior conversation in this thread — use this to understand follow-up questions:\n$conversationHistory\n" else ""}${if (searchContext.isNotEmpty()) "\nCURRENT WEB DATA — newer than your training data. Override any conflicting internal knowledge with this:\n$searchContext\n" else ""}
+${if (conversationHistory.isNotEmpty()) "\nPrior conversation in this thread — use this to understand follow-up questions:\n$conversationHistory\n" else ""}${if (searchContext.isNotEmpty()) "\n⚠ LIVE WEB DATA (fetched right now — more recent than your training). You MUST use these facts. If they contradict what you think you know, the web data is correct:\n$searchContext\n" else ""}
 Question: $question
 
 State your opening position in 2-4 sentences. Fact → reasoning → implication. No recommendation yet.

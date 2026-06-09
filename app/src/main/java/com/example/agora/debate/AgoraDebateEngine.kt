@@ -16,21 +16,36 @@ class AgoraDebateEngine(
     companion object {
         const val MAX_ROUNDS = 10
 
-        // Questions containing any of these phrases likely need live web data
+        // Questions containing any of these words/phrases likely need live web data.
+        // No trailing spaces — use whole-word feel via contains() on lowercased input.
         private val SEARCH_TRIGGERS = listOf(
-            "who is ", "who are ", "who was ", "who's ", "who won ", "who holds ",
-            "who leads ", "who currently ", "who did ",
-            "current ", "currently", "right now", "as of now", "as of today",
+            // People / titles
+            "who is", "who are", "who was", "who were", "who won", "who holds",
+            "who leads", "who currently", "who did", "who's the",
+            "current leader", "current champion", "current ceo", "current president",
+            "president of", "prime minister", "ceo of", "head of",
+            // Time-sensitive
+            "right now", "as of now", "as of today", "at the moment",
             "today", "this week", "this month", "this year",
-            "latest ", "most recent", "recent ", "just released", "just announced",
-            "2024", "2025", "2026",
-            "champion", "world record", "number one", "top ranked",
-            "president", "prime minister", "ceo", "cfo",
-            "price of", "cost of", "how much is", "exchange rate", "stock price",
-            "weather", "forecast", "temperature",
-            "score", "standings", "ranking", "leaderboard",
-            "news", "announced", "launched", "released",
-            "happened", "latest update"
+            "latest", "most recent", "recent news", "just released", "just announced",
+            "new release", "newly",
+            // Year numbers
+            "2023", "2024", "2025", "2026",
+            // Records / rankings
+            "world champion", "world record", "number one", "top ranked",
+            "currently ranked", "standings", "leaderboard",
+            // Finance / prices
+            "price of", "cost of", "how much is", "how much does",
+            "exchange rate", "stock price", "market cap", "worth today",
+            "bitcoin", "crypto",
+            // Sports / events
+            "champion", "winner of", "who won the", "world cup", "world series",
+            "oscar", "grammy", "nobel prize",
+            // Weather / live data
+            "weather", "forecast", "temperature in",
+            // News
+            "breaking news", "latest news", "what happened", "recent events",
+            "announced", "just launched", "just released"
         )
 
         fun needsSearch(question: String): Boolean {
@@ -62,10 +77,13 @@ class AgoraDebateEngine(
         val searchContext: String = if (needsSearch(searchQuery)) {
             onStatusUpdate("Searching the web...")
             val results = withContext(Dispatchers.IO) { WebSearchService.search(searchQuery) }
-            if (results.isNotEmpty())
+            if (results.isNotEmpty()) {
+                onStatusUpdate("Web search: ${results.size} results found...")
                 results.joinToString("\n\n") { "• ${it.title}: ${it.snippet}" }
-            else
+            } else {
+                onStatusUpdate("Web search unavailable — using training data...")
                 ""
+            }
         } else {
             ""
         }
