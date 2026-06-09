@@ -255,9 +255,12 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) { repository.save(updatedConversations) }
 
+        // Build history from prior messages in this thread (last 6 messages max)
+        val history = buildHistory(currentMessages.dropLast(1)) // exclude the just-added user message
+
         viewModelScope.launch {
             try {
-                val result = engine.runDebate(effectiveQuestion, attachments) { status ->
+                val result = engine.runDebate(effectiveQuestion, attachments, history) { status ->
                     _uiState.update { it.copy(statusLabel = status) }
                 }
 
@@ -299,6 +302,18 @@ class AgoraViewModel(application: Application) : AndroidViewModel(application) {
         }
         _uiState.update { it.copy(activeMessages = updatedMessages, conversations = updatedConversations) }
         viewModelScope.launch(Dispatchers.IO) { repository.save(updatedConversations) }
+    }
+
+    private fun buildHistory(messages: List<ChatMessage>): String {
+        if (messages.isEmpty()) return ""
+        // Take last 6 messages (3 exchanges) to keep context manageable
+        return messages.takeLast(6).joinToString("\n") { msg ->
+            when (msg.role) {
+                ChatRole.User -> "User: ${msg.text}"
+                ChatRole.Agora -> "Agora: ${msg.text.take(300)}"  // truncate long advisories
+                else -> ""
+            }
+        }.trim()
     }
 
     override fun onCleared() {

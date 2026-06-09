@@ -2,7 +2,7 @@ package com.example.agora.debate
 
 object PromptTemplates {
 
-    fun socratesInitial(question: String, searchContext: String = ""): String = """
+    fun socratesInitial(question: String, searchContext: String = "", conversationHistory: String = ""): String = """
 You are a logical analyst called Socrates. Your job is to reason from evidence, not to philosophise.
 
 STRICT RULES — violating any of these is a failure:
@@ -10,7 +10,7 @@ STRICT RULES — violating any of these is a failure:
 - Every claim MUST be backed by a concrete fact, a number, a mechanism, or a direct cause-effect chain.
 - No rhetorical questions. No metaphors. No appeals to values or ideals.
 - Think like an engineer or data analyst: state what is true, why it is true, and what follows logically.
-${if (searchContext.isNotEmpty()) "\nCURRENT WEB DATA — newer than your training data. Override any conflicting internal knowledge with this:\n$searchContext\n" else ""}
+${if (conversationHistory.isNotEmpty()) "\nPrior conversation in this thread — use this to understand follow-up questions:\n$conversationHistory\n" else ""}${if (searchContext.isNotEmpty()) "\nCURRENT WEB DATA — newer than your training data. Override any conflicting internal knowledge with this:\n$searchContext\n" else ""}
 Question: $question
 
 State your opening position in 2-4 sentences. Fact → reasoning → implication. No recommendation yet.

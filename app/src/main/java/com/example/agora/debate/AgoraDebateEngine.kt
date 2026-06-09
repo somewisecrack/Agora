@@ -42,15 +42,26 @@ class AgoraDebateEngine(
     suspend fun runDebate(
         question: String,
         attachments: List<Attachment> = emptyList(),
+        conversationHistory: String = "",
         onStatusUpdate: (String) -> Unit = {}
     ): AgoraDebateResult {
         val turns = mutableListOf<DebateTurn>()
         var consensusReached = false
 
+        // For short/ambiguous follow-ups (e.g. "check again", "why?"), resolve
+        // the search query using context from the thread's last user question
+        val searchQuery = if (question.split(" ").size <= 4 && conversationHistory.isNotEmpty()) {
+            // Extract last user question from history as the search topic
+            val lastUserLine = conversationHistory.lines()
+                .lastOrNull { it.startsWith("User: ") }
+                ?.removePrefix("User: ")?.trim()
+            if (lastUserLine != null) "$lastUserLine — $question" else question
+        } else question
+
         // Keyword-based detection — instant, no LLM call needed
-        val searchContext: String = if (needsSearch(question)) {
+        val searchContext: String = if (needsSearch(searchQuery)) {
             onStatusUpdate("Searching the web...")
-            val results = withContext(Dispatchers.IO) { WebSearchService.search(question) }
+            val results = withContext(Dispatchers.IO) { WebSearchService.search(searchQuery) }
             if (results.isNotEmpty())
                 results.joinToString("\n\n") { "• ${it.title}: ${it.snippet}" }
             else
@@ -64,7 +75,7 @@ class AgoraDebateEngine(
             onStatusUpdate("Socrates is thinking...")
             val socratesResponse = if (round == 1) {
                 // Attachments only passed on the first turn — they ground the initial position
-                llm.generate(PromptTemplates.socratesInitial(question, searchContext), attachments)
+                llm.generate(PromptTemplates.socratesInitial(question, searchContext, conversationHistory), attachments)
             } else {
                 val transcript = TranscriptFormatter.formatTurns(turns)
                 llm.generate(PromptTemplates.socratesRevision(question, transcript))
