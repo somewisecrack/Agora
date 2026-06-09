@@ -2,17 +2,6 @@ package com.example.agora.debate
 
 object PromptTemplates {
 
-    fun needsWebSearch(question: String): String = """
-Classify whether this question requires current, real-time, or recently updated information from the web to answer accurately.
-Reply with exactly one word: YES or NO.
-
-YES — stock prices, exchange rates, weather, today's news, recent events, live scores, product prices, new software releases, current laws or policies.
-NO — historical facts, timeless concepts, general advice, logic, math, science fundamentals, personal opinions.
-
-Question: $question
-Answer:
-    """.trimIndent()
-
     fun socratesInitial(question: String, searchContext: String = ""): String = """
 You are a logical analyst called Socrates. Your job is to reason from evidence, not to philosophise.
 
@@ -21,7 +10,7 @@ STRICT RULES — violating any of these is a failure:
 - Every claim MUST be backed by a concrete fact, a number, a mechanism, or a direct cause-effect chain.
 - No rhetorical questions. No metaphors. No appeals to values or ideals.
 - Think like an engineer or data analyst: state what is true, why it is true, and what follows logically.
-${if (searchContext.isNotEmpty()) "\nCurrent web data (use this to ground your answer):\n$searchContext\n" else ""}
+${if (searchContext.isNotEmpty()) "\nCURRENT WEB DATA — newer than your training data. Override any conflicting internal knowledge with this:\n$searchContext\n" else ""}
 Question: $question
 
 State your opening position in 2-4 sentences. Fact → reasoning → implication. No recommendation yet.

@@ -15,6 +15,28 @@ class AgoraDebateEngine(
 
     companion object {
         const val MAX_ROUNDS = 10
+
+        // Questions containing any of these phrases likely need live web data
+        private val SEARCH_TRIGGERS = listOf(
+            "who is ", "who are ", "who was ", "who's ", "who won ", "who holds ",
+            "who leads ", "who currently ", "who did ",
+            "current ", "currently", "right now", "as of now", "as of today",
+            "today", "this week", "this month", "this year",
+            "latest ", "most recent", "recent ", "just released", "just announced",
+            "2024", "2025", "2026",
+            "champion", "world record", "number one", "top ranked",
+            "president", "prime minister", "ceo", "cfo",
+            "price of", "cost of", "how much is", "exchange rate", "stock price",
+            "weather", "forecast", "temperature",
+            "score", "standings", "ranking", "leaderboard",
+            "news", "announced", "launched", "released",
+            "happened", "latest update"
+        )
+
+        fun needsSearch(question: String): Boolean {
+            val q = question.lowercase()
+            return SEARCH_TRIGGERS.any { q.contains(it) }
+        }
     }
 
     suspend fun runDebate(
@@ -25,13 +47,14 @@ class AgoraDebateEngine(
         val turns = mutableListOf<DebateTurn>()
         var consensusReached = false
 
-        // Decide if web search is needed, then fetch results silently
-        onStatusUpdate("Thinking...")
-        val searchCheck = llm.generate(PromptTemplates.needsWebSearch(question)).trim()
-        val searchContext: String = if (searchCheck.uppercase().startsWith("YES")) {
+        // Keyword-based detection — instant, no LLM call needed
+        val searchContext: String = if (needsSearch(question)) {
             onStatusUpdate("Searching the web...")
             val results = withContext(Dispatchers.IO) { WebSearchService.search(question) }
-            results.joinToString("\n\n") { "• ${it.title}: ${it.snippet}" }
+            if (results.isNotEmpty())
+                results.joinToString("\n\n") { "• ${it.title}: ${it.snippet}" }
+            else
+                ""
         } else {
             ""
         }
