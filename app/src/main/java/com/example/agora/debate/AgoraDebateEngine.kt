@@ -116,6 +116,18 @@ class AgoraDebateEngine(
                 consensusReached = true
                 break
             }
+
+            // Deadlock detection: if Plato or Socrates repeats the same response,
+            // the debate is stuck — break and move to advisory
+            if (turns.size >= 2) {
+                val prev = turns[turns.size - 2]
+                val sameS = socratesResponse.take(80) == prev.socrates.take(80)
+                val sameP = platoResponse.take(80) == (prev.plato?.take(80) ?: "")
+                if (sameS || sameP) {
+                    consensusReached = true
+                    break
+                }
+            }
         }
 
         // --- Final advisory ---
